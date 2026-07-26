@@ -236,9 +236,9 @@ def render_precomputed(B):
         "artefacts, not detections."
     )
     st.sidebar.caption(
-        "The budget cannot be varied here — every alternative would need the dataset "
-        "re-scored. `streamlit run dashboard/app.py` with datasets in `data/` gives the "
-        "fully interactive version, which re-scores on demand."
+        "The budget cannot be varied in this mode — every alternative would need the "
+        "dataset re-scored. With datasets in `data/`, switch **Mode** to *Re-score live* "
+        "for the fully interactive path, which re-fits on demand."
     )
 
     # ---- queue ----
@@ -483,8 +483,25 @@ def render_precomputed(B):
 st.title("Behavioural Anomaly Detection — analyst console")
 
 _AVAIL = available_bundles()
+_TAGS = _tags()
 
-if _AVAIL:
+# Which path runs. The precomputed bundles are the default everywhere, because they hold the
+# real full-scale numbers and load instantly. But `demo/` is committed, so without this
+# choice the bundle would win even on a machine that HAS the datasets, and the live scoring
+# path -- the one that actually demonstrates score_event, the ablations and a re-fit -- would
+# be unreachable locally. Only offered when datasets are present; on a cloud container
+# there is nothing to score, so no dead control is shown.
+_live = False
+if _AVAIL and _TAGS:
+    _live = st.sidebar.radio(
+        "Mode", ["Precomputed results", "Re-score live from data/"], index=0,
+        help="Precomputed shows the exported full-scale results — the numbers in "
+             "REPORT.md, ten selectable fit/eval pairs, no computation. Live re-fits the "
+             "detector and re-scores a dataset from data/, which takes a few minutes and "
+             "lets you vary the budget and the seed pair freely."
+    ) == "Re-score live from data/"
+
+if _AVAIL and not _live:
     # Dataset choice comes FIRST, because it changes every number below it. Only the
     # fit/eval pairings the report actually ran are offered -- a free choice of seeds
     # would let a judge produce numbers that appear nowhere in REPORT.md and cannot be
@@ -503,7 +520,8 @@ if _AVAIL:
     render_precomputed(BUNDLE)
     st.stop()
 
-tags = _tags()
+tags = _TAGS
+
 if not tags:
     # Clean clone: data/ is gitignored (173 MB, fully reproducible from a seed), so the
     # app generates a demo pair on first run rather than dead-ending. This is what makes
