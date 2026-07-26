@@ -100,14 +100,22 @@ if not tags:
     # Clean clone: data/ is gitignored (173 MB, fully reproducible from a seed), so the
     # app generates a demo pair on first run rather than dead-ending. This is what makes
     # a cloud deploy work without shipping datasets in the repo.
-    st.warning("No datasets found. Generating a demo pair (seed 1 → seed 3) — about a "
-               "minute, one time only.")
+    # Sized for a ~1 GB container: 100 entities x 40 days peaks at ~405 MB of Python
+    # data, leaving headroom under Streamlit Community Cloud's limit once the ~300 MB
+    # numpy/pandas/sklearn/lightgbm baseline is counted. The full 200 x 60 datasets peak
+    # near 900 MB and will be OOM-killed there. Override with DEMO_ENTITIES / DEMO_DAYS
+    # when running somewhere with more memory.
+    st.warning("No datasets found. Generating a demo pair (seed 1 → seed 3) — about two "
+               "minutes, one time only.")
     import subprocess
     prog = st.progress(0.0, text="Generating…")
     for i, seed in enumerate((1, 3)):
         subprocess.run(
             [sys.executable, os.path.join(os.path.abspath(SRC), "generator.py"),
-             "--seed", str(seed), "--entities", "200", "--days", "60", "--delta", "0.5"],
+             "--seed", str(seed),
+             "--entities", os.environ.get("DEMO_ENTITIES", "100"),
+             "--days", os.environ.get("DEMO_DAYS", "40"),
+             "--delta", "0.5"],
             check=True, capture_output=True)
         prog.progress((i + 1) / 2.0, text="Generated seed %d" % seed)
     prog.empty()
