@@ -44,6 +44,85 @@ BAND_ICON = {"HIGH": "🔴", "MEDIUM": "🟠", "LOW": "⚪"}
 
 DEMO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "demo")
 
+# Tooltip text for the metric tiles, keyed by label. Defined ONCE because the precomputed and
+# live paths render the same metrics from different code; inline strings in both would drift,
+# which is how the two paths ended up disagreeing before. Written for someone who has never
+# seen the project -- what the number means and, where it matters, how NOT to read it.
+HELP = {
+    "Events scored": "Log lines examined. Every one got a risk score.",
+    "Events monitored": "Log lines examined. Every one got a risk score.",
+    "Entities": "Distinct accounts and devices, each with its own learned baseline. "
+                "'Normal' is defined per entity, never globally — 3 a.m. access is routine "
+                "for a batch service account and alarming for a receptionist.",
+    "Campaigns": "Real attacks hidden in this data, counted as whole incidents rather than "
+                 "events. insider_drift is excluded: it is deliberately ambiguous legitimate "
+                 "behaviour used to test false positives, not an attack.",
+    "Window": "Time span covered. Some attacks here unfold over weeks, which is why a "
+              "day-scale detection level exists.",
+    "Budget": "Alerts an analyst is assumed able to review per day at this level. Every "
+              "metric on the Performance tab is conditioned on this number — a detection "
+              "claim without a stated budget is meaningless.",
+    "Alerts in queue": "Alerts surviving the daily budget at the selected level, after the "
+                       "burn-in period is excluded.",
+    "Incident recall@K": "Of the real attack campaigns in this dataset, the fraction the "
+                         "analyst was told about at least once. Each campaign counts once "
+                         "however many events it contains, so a noisy attack cannot inflate "
+                         "the score. This is the primary number.",
+    "Incident recall": "Of the real attack campaigns, the fraction the analyst was told "
+                       "about at least once. Each campaign counts once regardless of size.",
+    "Incident precision@K": "Of the alerts reviewed, the fraction that were a real campaign. "
+                            "Read it against the ceiling beside it: there are fewer campaigns "
+                            "than review slots, so even a perfect detector cannot reach "
+                            "1.000 — the spare slots have nothing real left to find.",
+    "Alerts/analyst/day": "The human cost. A detector that catches everything by alerting on "
+                          "everything has not solved the problem, so no detection number "
+                          "here is quoted without this beside it.",
+    "Median time-to-detect": "Hours from a campaign's first malicious event to the first "
+                             "alert about it that an analyst would actually have reviewed. "
+                             "Catching a three-week data theft on day 19 is not a success.",
+    "Precision@1%": "Take the top 1% of events by risk — the realistic review budget. This "
+                    "is the fraction of them that were genuinely malicious. 0.88 means "
+                    "roughly 9 in 10 alerts were worth opening.",
+    "Recall@1%": "The fraction of all attack events inside that same 1%. Do not read it as a "
+                 "failure grade: you cannot find 100% of a 2%-prevalence problem while "
+                 "reviewing only 1% of events, so the arithmetic ceiling is printed beside "
+                 "it. Compare to that, not to 1.000.",
+    "R-Precision": "The same measurement with the budget set to the true number of attack "
+                   "events, which removes the ceiling on Recall@1%. This is the fairest "
+                   "single number for comparing detectors.",
+    "PR-AUC": "Overall ranking quality, independent of any threshold. Judge it against the "
+              "random baseline beside it, which equals the attack rate — the '×random' "
+              "figure is the real lift. Expected here is 0.5–0.8; a value near 0.99 on "
+              "synthetic data indicates a leaking benchmark, not a strong detector.",
+    "Cold-start events": "Events from accounts with too little history to have a reliable "
+                         "baseline. A new joiner has no 'normal' yet, so everything they do "
+                         "looks novel.",
+    "Share of top-1% budget": "How much of the analyst's review budget those new accounts "
+                              "consume. If this greatly exceeds their share of traffic, the "
+                              "detector is spending attention on newness rather than risk.",
+    "Precision, cold alerts": "Of the reviewed alerts on new accounts, the fraction that "
+                              "were real attacks.",
+    "Precision, warm alerts": "The same for established accounts. If cold precision is the "
+                              "higher of the two, the extra budget spent on new accounts is "
+                              "earned rather than wasted.",
+    "Throughput": "Events scored per second on one CPU core, single-threaded. The detector "
+                  "keeps a fixed amount of state per entity, so this does not degrade as the "
+                  "log grows.",
+    "p50 latency": "Median time to score one event end to end. Half of events are faster.",
+    "p99 latency": "The slow tail — 99 of 100 events are faster than this. Tail latency is "
+                   "what decides whether a stream keeps up under load, not the average.",
+    "State per entity": "Memory held per monitored account. Bounded by design, so cost grows "
+                        "linearly with the number of entities and not at all with time.",
+    "Exact-match accuracy": "How often the predicted attack type matched the true one, over "
+                            "alerts that were real attacks. Attribution is rule-based over "
+                            "named evidence rather than learned, so it cannot recover the "
+                            "generator's wiring from labels.",
+    "Distinct resources": "How many different systems this entity touched. Sudden breadth is "
+                          "a reconnaissance signal; depth on a few is usually legitimate.",
+    "Distinct source IPs": "How many network addresses this entity used. Ordinary for a "
+                           "roaming laptop, unusual for a fixed service account.",
+}
+
 
 @st.cache_data(show_spinner=False)
 def available_bundles():
@@ -187,6 +266,139 @@ def metrics(eval_tag: str, level: str, per_day: int, _combined, _scored, _labels
 
 
 
+def render_orientation():
+    """Plain-language orientation, collapsed by default.
+
+    A reviewer landing on this page cold has no way to know why there is no accuracy figure,
+    why recall carries a printed ceiling, or why the same attack appears at three different
+    aggregation levels. Those are the three things most likely to be misread as omissions
+    rather than as deliberate choices, so they are answered here rather than left to the
+    report. Collapsed, because someone who already knows should not have to scroll past it.
+    """
+    with st.expander("❓ New here? What this page is, and how to read it", expanded=False):
+        st.markdown("""
+**What this is.** A security analyst's console. The system reads access logs — who signed
+in, from where, on what device, touching which resource — and learns what *normal* looks
+like **for each individual account**, then ranks the most abnormal activity for a human to
+review. There is no single "suspicious" rule: 3 a.m. access is routine for a batch service
+account and alarming for a receptionist, so every judgement is relative to that entity's own
+history.
+
+All data here is **synthetic**, generated for this project. That is what makes it possible to
+show you the right answers (the *Evaluation mode* checkbox) and to measure the detector
+honestly. No real logs were used.
+""")
+        st.markdown("**The controls, left to right in the sidebar**")
+        st.table(pd.DataFrame([
+            {"Control": "Mode",
+             "What it does": "Precomputed = the real evaluated results, loaded instantly. "
+                             "Re-score live = actually re-fit and re-score now, so you can "
+                             "change seeds and budget. Live on a small dataset inflates "
+                             "every metric; it is labelled where that applies."},
+            {"Control": "Evaluation dataset",
+             "What it does": "Which benchmark to look at. δ is the difficulty dial: at 0.00 "
+                             "attacks are blatant, at 1.00 they overlap ordinary behaviour. "
+                             "The holdout seeds were scored once, after settings were "
+                             "frozen, so they are the honest test."},
+            {"Control": "Detection level",
+             "What it does": "The unit being watched. entity = one account. ip = one source "
+                             "address. long = one account over a whole day. Kept separate "
+                             "on purpose — see below."},
+            {"Control": "Evaluation mode",
+             "What it does": "Reveals the ground truth on each alert, so you can see which "
+                             "were genuinely attacks. Off by default; the detector never "
+                             "sees labels either way."},
+            {"Control": "Alerts to show",
+             "What it does": "Length of the queue on screen. Does not change the detector, "
+                             "only how much of its output you scroll through."},
+        ]))
+
+        st.markdown("""
+**Why three detection levels.** Some attacks are invisible at the wrong level. *Credential
+stuffing* is one attacker trying many accounts — each account sees a single odd login, so
+per-account it is nothing; at the **ip** level it is obvious. *Low and slow* data theft
+spreads over weeks, so it only appears in a **long** day-scale window. A detector that only
+watched individual accounts would miss both by construction, so all three run and are never
+mixed into one ranking.
+
+**Why there is no "accuracy" number here.** Attacks are about 2% of events. A detector that
+answered "nothing is ever an attack" would be **98% accurate** and completely useless. So
+accuracy is not reported, and neither is ROC-AUC, which is also flattered by the 98% of easy
+negatives. What is reported instead:
+""")
+        st.table(pd.DataFrame([
+            {"Metric": "Precision@1%",
+             "In plain terms": "Of the alerts we actually sent to an analyst, what fraction "
+                               "were real attacks. 0.88 means roughly 9 in 10 were worth "
+                               "opening."},
+            {"Metric": "Recall@1%",
+             "In plain terms": "What fraction of all attack activity landed in that budget. "
+                               "It has a hard arithmetic ceiling — you cannot find 100% of "
+                               "a 2% problem by reviewing 1% of events — so the ceiling is "
+                               "printed next to it."},
+            {"Metric": "R-Precision",
+             "In plain terms": "The same idea with the ceiling removed, so it is the fairer "
+                               "single number to compare."},
+            {"Metric": "PR-AUC",
+             "In plain terms": "Ranking quality across every threshold. Compare it to the "
+                               "random baseline shown beside it (= the attack rate); the "
+                               "'×random' figure is the honest lift."},
+            {"Metric": "Incident recall",
+             "In plain terms": "The one that matters operationally: of N real attack "
+                               "campaigns, how many did the analyst get told about at all. "
+                               "A 50-event brute force and a 3-event impossible travel each "
+                               "count once, so a noisy attack cannot inflate the score."},
+            {"Metric": "Alerts/analyst/day",
+             "In plain terms": "The workload this costs. A detector that finds everything by "
+                               "alerting on everything has not solved the problem."},
+        ]))
+
+        st.markdown("**The six tabs**")
+        st.table(pd.DataFrame([
+            {"Tab": "Alert queue", "Contains":
+             "The actual product: alerts ranked by risk, each opening to show the named "
+             "signals that fired and a plain-English sentence. Start here."},
+            {"Tab": "Performance", "Contains":
+             "Did it work. Headline metrics, per-attack-type recall, the type-classification "
+             "confusion matrix, and which benign behaviours caused false positives."},
+            {"Tab": "Robustness", "Contains":
+             "Does it hold up. Behaviour on brand-new accounts with no history, adaptation "
+             "when legitimate behaviour changes, and performance as attacks get subtler."},
+            {"Tab": "Entity history", "Contains":
+             "One account's timeline — its resources, addresses and risk score over time. "
+             "Useful for seeing what 'normal' actually looked like before an alert."},
+            {"Tab": "Alert volume", "Contains":
+             "Alerts per day. Steady volume is a deliberate design goal: an analyst team "
+             "has fixed capacity, so a detector that alerts 400 times one day is unusable."},
+            {"Tab": "Detector internals", "Contains":
+             "How the score is built — each signal's weight and the corrections applied. "
+             "Nothing here is a black box, which is the point."},
+        ]))
+
+        st.markdown("""
+**A few words you will see**
+
+- **Event** — one log line. **Entity** — one account or device. **Alert** — related events
+  grouped into a single thing to review, so one attack is not 50 separate tickets.
+- **Campaign / incident** — one real attack from start to finish. Counting these rather than
+  events is what stops a noisy attack from dominating the score.
+- **Confounder** — a *benign* behaviour deliberately injected to fool the detector: business
+  travel, a password-reset storm, a laptop refresh, an on-call night shift. They are injected
+  at **4× the attack rate**, because "unusual" and "malicious" are not the same thing and the
+  false-positive table is the proof.
+- **Cold start** — an account with too little history to have a baseline. Those alerts are
+  marked *LOW CONFIDENCE*, and the score is pulled toward what similar accounts do.
+- **Burn-in** — the first 7 days are excluded, because before that nobody has any history
+  and everything looks abnormal. Those would be artefacts, not detections.
+- **z** — how many standard deviations from that entity's own normal. Roughly: 2 is notable,
+  4 is strong, 6 is extreme.
+
+**Suggested three minutes:** open **Alert queue** and expand the top alert to see the
+reasoning → tick **Evaluation mode** in the sidebar to find out whether it was real → go to
+**Performance** and read Incident recall together with Alerts/analyst/day.
+""")
+
+
 def render_precomputed(B):
     """Render the real evaluated results. No fitting, no scoring, ~no memory."""
     meta, M = B["meta"], B["metrics"]
@@ -199,11 +411,16 @@ def render_precomputed(B):
            meta["entities"], meta["n_days"], meta["n_campaigns"]))
 
     k1, k2, k3, k4, k5 = st.columns(5)
-    k1.metric("Events scored", f'{meta["eval_events"]:,}')
-    k2.metric("Entities", "%d" % meta["entities"])
-    k3.metric("Campaigns", "%d" % meta["n_campaigns"])
-    k4.metric("Window", "%d days" % meta["n_days"])
-    k5.metric("Budget", "%d/day" % meta["per_day"])
+    k1.metric("Events scored", f'{meta["eval_events"]:,}',
+              help=HELP["Events scored"])
+    k2.metric("Entities", "%d" % meta["entities"],
+              help=HELP["Entities"])
+    k3.metric("Campaigns", "%d" % meta["n_campaigns"],
+              help=HELP["Campaigns"])
+    k4.metric("Window", "%d days" % meta["n_days"],
+              help=HELP["Window"])
+    k5.metric("Budget", "%d/day" % meta["per_day"],
+              help=HELP["Budget"])
 
     t_q, t_p, t_r, t_e, t_v, t_m = st.tabs(
         ["Alert queue", "Performance", "Robustness", "Entity history", "Alert volume",
@@ -289,21 +506,29 @@ def render_precomputed(B):
         st.subheader("Primary — incident level")
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("Incident recall@K", "%.3f" % inc_m["incident_recall_at_k"],
-                  "%d/%d campaigns" % (inc_m["n_campaigns_detected"], inc_m["n_campaigns"]))
+                  "%d/%d campaigns" % (inc_m["n_campaigns_detected"], inc_m["n_campaigns"]),
+                  help=HELP["Incident recall@K"])
         m2.metric("Incident precision@K", "%.3f" % inc_m["incident_precision_at_k"],
-                  "ceiling %.3f — budget-bound" % inc_m["incident_precision_ceiling"])
-        m3.metric("Alerts/analyst/day", "%.1f" % inc_m["alerts_per_analyst_per_day"])
-        m4.metric("Median time-to-detect", "%.1f h" % (inc_m.get("median_ttd_hours") or 0))
+                  "ceiling %.3f — budget-bound" % inc_m["incident_precision_ceiling"],
+                  help=HELP["Incident precision@K"])
+        m3.metric("Alerts/analyst/day", "%.1f" % inc_m["alerts_per_analyst_per_day"],
+                  help=HELP["Alerts/analyst/day"])
+        m4.metric("Median time-to-detect", "%.1f h" % (inc_m.get("median_ttd_hours") or 0),
+                  help=HELP["Median time-to-detect"])
 
         st.subheader("Event level — top 1% budget")
         e1, e2, e3, e4 = st.columns(4)
         e1.metric("Precision@1%", "%.3f" % ev_m["precision_at_budget"],
-                  "ceiling %.3f" % ev_m["precision_at_budget_ceiling"])
+                  "ceiling %.3f" % ev_m["precision_at_budget_ceiling"],
+                  help=HELP["Precision@1%"])
         e2.metric("Recall@1%", "%.3f" % ev_m["recall_at_budget"],
-                  "ceiling %.3f" % ev_m["recall_at_budget_ceiling"])
-        e3.metric("R-Precision", "%.3f" % ev_m["r_precision"], "no ceiling artefact")
+                  "ceiling %.3f" % ev_m["recall_at_budget_ceiling"],
+                  help=HELP["Recall@1%"])
+        e3.metric("R-Precision", "%.3f" % ev_m["r_precision"], "no ceiling artefact",
+                  help=HELP["R-Precision"])
         e4.metric("PR-AUC", "%.3f" % ev_m["pr_auc"],
-                  "%.0fx random (%.4f)" % (ev_m["pr_auc_lift"], ev_m["pr_auc_baseline"]))
+                  "%.0fx random (%.4f)" % (ev_m["pr_auc_lift"], ev_m["pr_auc_baseline"]),
+                  help=HELP["PR-AUC"])
 
         st.subheader("Per-attack-type campaign recall")
         pt = pd.DataFrame([{"type": k, "recall": v["recall"],
@@ -339,10 +564,14 @@ def render_precomputed(B):
         st.subheader("Cold start — measured, not merely implemented")
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Cold-start events", f'{cs["n_cold"]:,}',
-                  "%.1f%% of stream" % (100 * cs["share_traffic"]))
-        c2.metric("Share of top-1% budget", "%.1f%%" % (100 * cs["share_budget"]))
-        c3.metric("Precision, cold alerts", "%.1f%%" % (100 * cs["precision_cold"]))
-        c4.metric("Precision, warm alerts", "%.1f%%" % (100 * cs["precision_warm"]))
+                  "%.1f%% of stream" % (100 * cs["share_traffic"]),
+                  help=HELP["Cold-start events"])
+        c2.metric("Share of top-1% budget", "%.1f%%" % (100 * cs["share_budget"]),
+                  help=HELP["Share of top-1% budget"])
+        c3.metric("Precision, cold alerts", "%.1f%%" % (100 * cs["precision_cold"]),
+                  help=HELP["Precision, cold alerts"])
+        c4.metric("Precision, warm alerts", "%.1f%%" % (100 * cs["precision_warm"]),
+                  help=HELP["Precision, warm alerts"])
         if cs["precision_cold"] >= cs["precision_warm"]:
             st.caption(
                 "Cold-start entities take %.1f%% of the budget while being %.1f%% of "
@@ -396,9 +625,12 @@ def render_precomputed(B):
                                        "precision_at_1pct", "r_precision", "pr_auc"]}),
                 width="stretch")
             g1, g2, g3 = st.columns(3)
-            g1.metric("Incident recall", "%.3f" % hd["incident_recall"].mean(), "holdout mean")
-            g2.metric("PR-AUC", "%.3f" % hd["pr_auc"].mean(), "holdout mean")
-            g3.metric("R-Precision", "%.3f" % hd["r_precision"].mean(), "holdout mean")
+            g1.metric("Incident recall", "%.3f" % hd["incident_recall"].mean(),
+                      "holdout mean", help=HELP["Incident recall"])
+            g2.metric("PR-AUC", "%.3f" % hd["pr_auc"].mean(), "holdout mean",
+                      help=HELP["PR-AUC"])
+            g3.metric("R-Precision", "%.3f" % hd["r_precision"].mean(), "holdout mean",
+                      help=HELP["R-Precision"])
 
         ab = os.path.join(FIG, "ablation_multiseed.csv")
         if os.path.exists(ab):
@@ -421,8 +653,10 @@ def render_precomputed(B):
             eh = h[h["entity_id"] == who].sort_values("timestamp")
             c1, c2, c3, c4 = st.columns(4)
             c1.metric("Events", "%d" % len(eh))
-            c2.metric("Distinct resources", "%d" % eh["resource_accessed"].nunique())
-            c3.metric("Distinct source IPs", "%d" % eh["source_ip"].nunique())
+            c2.metric("Distinct resources", "%d" % eh["resource_accessed"].nunique(),
+                      help=HELP["Distinct resources"])
+            c3.metric("Distinct source IPs", "%d" % eh["source_ip"].nunique(),
+                      help=HELP["Distinct source IPs"])
             c4.metric("Type", str(eh["entity_type"].iloc[0]))
             if "score" in eh:
                 st.line_chart(eh.set_index("timestamp")["score"], height=240)
@@ -489,6 +723,10 @@ def render_precomputed(B):
 # --------------------------------------------------------------------------------------
 
 st.title("Behavioural Anomaly Detection — analyst console")
+
+# Called before the mode branch so BOTH paths get it. Putting it inside each renderer is how
+# the two paths drifted apart before.
+render_orientation()
 
 _AVAIL = available_bundles()
 _TAGS = _tags()
@@ -629,11 +867,13 @@ for e_, a_ in zip(assign["event_id"].to_numpy(), assign["alert_id"].to_numpy()):
     a2e.setdefault(a_, []).append(e_)
 
 k1, k2, k3, k4, k5 = st.columns(5)
-k1.metric("Events monitored", "{:,}".format(len(events)))
-k2.metric("Entities", "%d" % n_entities)
-k3.metric("Alerts in queue", "%d" % len(queue), "%s level only" % level)
-k4.metric("Window", "%.0f days" % n_days)
-k5.metric("Budget", "%d/day" % per_day)
+k1.metric("Events monitored", "{:,}".format(len(events)),
+          help=HELP["Events monitored"])
+k2.metric("Entities", "%d" % n_entities, help=HELP["Entities"])
+k3.metric("Alerts in queue", "%d" % len(queue), "%s level only" % level,
+          help=HELP["Alerts in queue"])
+k4.metric("Window", "%.0f days" % n_days, help=HELP["Window"])
+k5.metric("Budget", "%d/day" % per_day, help=HELP["Budget"])
 
 # ---- scale caveat -------------------------------------------------------------------
 # Live mode on a cloud container scores a generated 100 x 40 pair, which yields ~19
@@ -776,12 +1016,16 @@ with tab_p:
                "would contribute 50 detections and a 3-event impossible travel only 3.")
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Incident recall@K", "%.3f" % inc_m["incident_recall_at_k"],
-              "%d/%d campaigns" % (inc_m["n_campaigns_detected"], inc_m["n_campaigns"]))
+              "%d/%d campaigns" % (inc_m["n_campaigns_detected"], inc_m["n_campaigns"]),
+              help=HELP["Incident recall@K"])
     m2.metric("Incident precision@K", "%.3f" % inc_m["incident_precision_at_k"],
-              "ceiling %.3f — budget-bound" % inc_m["incident_precision_ceiling"])
-    m3.metric("Alerts/analyst/day", "%.1f" % inc_m["alerts_per_analyst_per_day"])
+              "ceiling %.3f — budget-bound" % inc_m["incident_precision_ceiling"],
+              help=HELP["Incident precision@K"])
+    m3.metric("Alerts/analyst/day", "%.1f" % inc_m["alerts_per_analyst_per_day"],
+              help=HELP["Alerts/analyst/day"])
     m4.metric("Median time-to-detect", "%.1f h" % inc_m["median_ttd_hours"],
-              "aggregate — see per-type below")
+              "aggregate — see per-type below",
+              help=HELP["Median time-to-detect"])
     st.caption("The aggregate TTD is dominated by burst attacks that are caught on their "
                "first event, so it reads 0.0 h and hides the number that matters: "
                "`low_and_slow` takes tens of hours. Per-type TTD is in the table below.")
@@ -825,12 +1069,16 @@ with tab_p:
     st.subheader("Event level — top 1% budget")
     e1, e2, e3, e4 = st.columns(4)
     e1.metric("Precision@1%", "%.3f" % event_m["precision_at_budget"],
-              "ceiling %.3f" % event_m["precision_at_budget_ceiling"])
+              "ceiling %.3f" % event_m["precision_at_budget_ceiling"],
+              help=HELP["Precision@1%"])
     e2.metric("Recall@1%", "%.3f" % event_m["recall_at_budget"],
-              "ceiling %.3f" % event_m["recall_at_budget_ceiling"])
-    e3.metric("R-Precision", "%.3f" % event_m["r_precision"], "no ceiling artefact")
+              "ceiling %.3f" % event_m["recall_at_budget_ceiling"],
+              help=HELP["Recall@1%"])
+    e3.metric("R-Precision", "%.3f" % event_m["r_precision"], "no ceiling artefact",
+              help=HELP["R-Precision"])
     e4.metric("PR-AUC", "%.3f" % event_m["pr_auc"],
-              "%.0fx random (%.4f)" % (event_m["pr_auc_lift"], event_m["pr_auc_baseline"]))
+              "%.0fx random (%.4f)" % (event_m["pr_auc_lift"], event_m["pr_auc_baseline"]),
+              help=HELP["PR-AUC"])
     st.caption("Recall@1%% cannot exceed budget/prevalence — at %.2f%% prevalence its "
                "ceiling is %.3f. Precision@1%% is capped the other way when prevalence "
                "falls below the budget. R-Precision is the prevalence-robust one."
@@ -864,7 +1112,9 @@ with tab_p:
             st.dataframe(cm.style.background_gradient(cmap="Blues", axis=None)
                          .format("{:.0f}"), width='stretch')
         with cc2:
-            st.metric("Exact-match accuracy", "%.3f" % acc, "%d classified alerts" % len(cm_df))
+            st.metric("Exact-match accuracy", "%.3f" % acc,
+                      "%d classified alerts" % len(cm_df),
+                      help=HELP["Exact-match accuracy"])
             st.caption("Attribution is RULE-BASED over the named evidence, not learned. "
                        "A classifier trained on our own generator's labels would recover "
                        "the injection wiring — seven types from roughly seven knobs — and "
@@ -893,10 +1143,12 @@ with tab_p:
         L = json.load(open(lat))
         st.subheader("Streaming performance")
         s1, s2, s3, s4 = st.columns(4)
-        s1.metric("Throughput", "%.0f ev/s" % L["events_per_second"])
-        s2.metric("p50 latency", "%.2f ms" % L["p50_ms"])
-        s3.metric("p99 latency", "%.2f ms" % L["p99_ms"])
-        s4.metric("State per entity", "%.1f kB" % (L["state_bytes_per_entity"] / 1e3))
+        s1.metric("Throughput", "%.0f ev/s" % L["events_per_second"],
+                  help=HELP["Throughput"])
+        s2.metric("p50 latency", "%.2f ms" % L["p50_ms"], help=HELP["p50 latency"])
+        s3.metric("p99 latency", "%.2f ms" % L["p99_ms"], help=HELP["p99 latency"])
+        s4.metric("State per entity", "%.1f kB" % (L["state_bytes_per_entity"] / 1e3),
+                  help=HELP["State per entity"])
 
 # ---- robustness: drift, cold start, difficulty sweep, holdout ------------------------
 with tab_ev:
