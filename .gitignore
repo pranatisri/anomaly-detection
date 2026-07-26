@@ -1,6 +1,7 @@
 # Generated datasets. 173 MB and fully reproducible from a seed — never commit these.
 # `python src/generator.py --seed N ...` regenerates any of them byte-identically.
 data/*.parquet
+!data/.gitkeep
 
 # Python
 __pycache__/

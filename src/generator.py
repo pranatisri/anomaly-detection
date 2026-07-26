@@ -566,7 +566,10 @@ def inject_attack(em: Emitter, kind: str, cid: str, prof: EntityProfile,
         # Invisible to a per-entity detector, which is why the IP level exists.
         n_ips = max(1, int(lerp(1, 4, delta)))
         ips = [em.any_ip(prof) for _ in range(n_ips)]
-        victims = list(rng.choice(len(profiles), size=int(rng.integers(20, 70)), replace=False))
+        # Clamp to the population: a small estate has fewer entities than the nominal
+        # 20-70 victim fan-out, and sampling without replacement would raise.
+        n_vic = int(min(rng.integers(20, 70), max(2, len(profiles) - 1)))
+        victims = list(rng.choice(len(profiles), size=n_vic, replace=False))
         succ_rate = lerp(0.02, 0.18, delta)
         span_h = lerp(1.5, 9.0, delta)
         for vi in victims:
