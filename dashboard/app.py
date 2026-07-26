@@ -110,13 +110,21 @@ if not tags:
     import subprocess
     prog = st.progress(0.0, text="Generating…")
     for i, seed in enumerate((1, 3)):
-        subprocess.run(
-            [sys.executable, os.path.join(os.path.abspath(SRC), "generator.py"),
-             "--seed", str(seed),
-             "--entities", os.environ.get("DEMO_ENTITIES", "100"),
-             "--days", os.environ.get("DEMO_DAYS", "40"),
-             "--delta", "0.5"],
-            check=True, capture_output=True)
+        cmd = [sys.executable, os.path.join(os.path.abspath(SRC), "generator.py"),
+               "--seed", str(seed),
+               "--entities", os.environ.get("DEMO_ENTITIES", "100"),
+               "--days", os.environ.get("DEMO_DAYS", "40"),
+               "--delta", "0.5"]
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        if res.returncode != 0:
+            # Surface the real cause. check=True raised a bare CalledProcessError with the
+            # subprocess output swallowed, which reaches the user as "Error running app"
+            # and nothing else.
+            st.error("Dataset generation failed (exit %d)." % res.returncode)
+            st.code((res.stderr or res.stdout or "no output")[-3000:])
+            st.info("Run locally instead:  python src/generator.py --seed 1 "
+                    "--entities 100 --days 40 --delta 0.5")
+            st.stop()
         prog.progress((i + 1) / 2.0, text="Generated seed %d" % seed)
     prog.empty()
     st.cache_resource.clear()
