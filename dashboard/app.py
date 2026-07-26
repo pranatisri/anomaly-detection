@@ -57,11 +57,16 @@ def load_bundle():
     import json
     d = os.path.abspath(DEMO)
     need = ["meta.json", "metrics.json", "alerts.json", "weights.json"]
+    optional = ["alerts_by_level.json"]
     if not all(os.path.exists(os.path.join(d, f)) for f in need):
         return None
     b = {}
     for f in need:
         b[f[:-5]] = json.load(open(os.path.join(d, f), encoding="utf-8"))
+    for f in optional:
+        fp_ = os.path.join(d, f)
+        if os.path.exists(fp_):
+            b[f[:-5]] = json.load(open(fp_, encoding="utf-8"))
     for f, key in (("fp_breakdown.csv", "fp"), ("volume.csv", "volume"),
                    ("confusion.csv", "confusion")):
         fp_ = os.path.join(d, f)
@@ -129,15 +134,11 @@ def render_precomputed(B):
     meta, M = B["meta"], B["metrics"]
     ev_m, inc_m = M["event"], M["incident"]
 
-    st.success(
-        "**Showing the real evaluated results** — fit on `%s` (%s events), scored on "
-        "`%s` (%s events, %d entities, %d days, **%d attack campaigns**). These are the "
-        "same numbers as `REPORT.md`, computed at full scale and exported by "
-        "`src/export_demo.py`; the app displays them rather than re-scoring, because a "
-        "cloud container cannot hold the datasets."
-        % (meta["fit_tag"], f'{meta["fit_events"]:,}', meta["eval_tag"],
-           f'{meta["eval_events"]:,}', meta["entities"], meta["n_days"],
-           meta["n_campaigns"]))
+    st.caption(
+        "Trained on `%s` · scored on `%s` — %s events, %d entities, %d days, %d attack "
+        "campaigns."
+        % (meta["fit_tag"], meta["eval_tag"], f'{meta["eval_events"]:,}',
+           meta["entities"], meta["n_days"], meta["n_campaigns"]))
 
     k1, k2, k3, k4, k5 = st.columns(5)
     k1.metric("Events scored", f'{meta["eval_events"]:,}')
@@ -150,16 +151,52 @@ def render_precomputed(B):
         ["Alert queue", "Performance", "Robustness", "Entity history", "Alert volume",
          "Detector internals"])
 
-    alerts = B["alerts"]
+    by_level = B.get("alerts_by_level") or {}
+    if by_level:
+        level = st.sidebar.selectbox(
+            "Detection level", list(by_level.keys()), index=0,
+            help="Levels are scored separately and never pooled. Credential stuffing is "
+                 "an IP-level phenomenon (many entities, few IPs); low_and_slow only "
+                 "exists over days. A per-entity-only detector misses both by construction.")
+        alerts = by_level[level]
+    else:
+        level = "entity"
+        alerts = B["alerts"]
+
     reveal = st.sidebar.checkbox("Evaluation mode (reveal ground truth)", value=False,
-                                 help="Available only because this data is synthetic.")
-    show_n = st.sidebar.slider("Alerts to show", 5, min(100, len(alerts)),
+                                 help="Available only because this data is synthetic. The "
+                                      "detector never sees labels.")
+    show_n = st.sidebar.slider("Alerts to show", 5, max(5, min(100, len(alerts))),
                                min(25, len(alerts)))
+
+    # State what is FIXED in this export. These were interactive controls in the live
+    # version; in precomputed mode they cannot be varied without re-running the export,
+    # and a control that changes nothing is worse than none. Showing the values means
+    # nothing looks silently dropped.
+    st.sidebar.divider()
+    st.sidebar.markdown("**Fixed in this export**")
+    st.sidebar.markdown(
+        "- burn-in: first **%d days** excluded\n"
+        "- budget: **%d alerts/day** at %s level\n"
+        "- fit seed: `%s` · eval seed: `%s`"
+        % (meta.get("burn_in_days", 7), meta["budgets"].get(level, meta["per_day"]),
+           level, meta["fit_tag"], meta["eval_tag"]))
+    st.sidebar.caption(
+        "Burn-in matters: for the first days no entity has history, so every baseline "
+        "sits at its prior and everything looks anomalous. Those are cold-start "
+        "artefacts, not detections."
+    )
+    st.sidebar.caption(
+        "To vary the seed pair or the budget, run locally — "
+        "`streamlit run dashboard/app.py` with datasets in `data/` gives the full "
+        "interactive version, which re-scores on demand."
+    )
 
     # ---- queue ----
     with t_q:
-        st.caption("Ranked by size-calibrated risk. Every contributing factor is a named, "
-                   "unit-ed signal — not a post-hoc attribution over an opaque score.")
+        st.caption("**%s level** — %d alerts within budget. Ranked by size-calibrated "
+                   "risk; every contributing factor is a named, unit-ed signal, not a "
+                   "post-hoc attribution over an opaque score." % (level, len(alerts)))
         for a in alerts[:show_n]:
             icon = BAND_ICON.get(a["band"], "⚪")
             head = "%s **%s** · `%s` · %s · score %.2f · %d events · %s%s" % (
@@ -185,10 +222,10 @@ def render_precomputed(B):
                     if a.get("truth"):
                         st.error("Ground truth: **%s**" % ", ".join(a["truth"]))
                     elif a.get("confounder"):
-                        st.warning("Ground truth: benign — engineered confounder "
+                        st.caption("Ground truth: benign — engineered confounder "
                                    "`%s`" % a["confounder"])
                     else:
-                        st.success("Ground truth: benign (ordinary)")
+                        st.caption("Ground truth: benign (ordinary)")
 
     # ---- performance ----
     with t_p:
@@ -250,11 +287,11 @@ def render_precomputed(B):
         c3.metric("Precision, cold alerts", "%.1f%%" % (100 * cs["precision_cold"]))
         c4.metric("Precision, warm alerts", "%.1f%%" % (100 * cs["precision_warm"]))
         if cs["precision_cold"] >= cs["precision_warm"]:
-            st.success(
+            st.caption(
                 "Cold-start entities take %.1f%% of the budget while being %.1f%% of "
-                "traffic — over-representation that is **earned**: those alerts are "
-                "%.1f%% malicious versus %.1f%% for warm alerts, and cold-start events "
-                "carry %.2fx the attack rate. Removing them would LOWER Precision@1%%."
+                "traffic. That over-representation is earned: those alerts are %.1f%% "
+                "malicious against %.1f%% for warm alerts, and cold-start events carry "
+                "%.2fx the attack rate — removing them would lower Precision@1%%."
                 % (100 * cs["share_budget"], 100 * cs["share_traffic"],
                    100 * cs["precision_cold"], 100 * cs["precision_warm"],
                    cs["attack_density_ratio"]))
@@ -271,7 +308,7 @@ def render_precomputed(B):
             d2.metric("Adaptive updating", "0.5", "same entity, 47x fewer")
             d3.metric("Poisoning resistance", "not shown", "0.765 vs 0.751, p=0.05")
             st.caption("The adaptation/rigidity trade-off is demonstrated and large. The "
-                       "poisoning claim is NOT met and is reported as a negative result.")
+                       "poisoning claim is not met, and is reported as a negative result.")
 
         st.subheader("Difficulty sweep")
         ds = os.path.join(FIG, "delta_sweep.png")
@@ -355,7 +392,9 @@ def render_precomputed(B):
     # ---- internals ----
     with t_m:
         W = B["weights"]
-        lv = st.selectbox("Level", list(W.keys()))
+        _keys = list(W.keys())
+        lv = st.selectbox("Level", _keys,
+                          index=_keys.index(level) if level in _keys else 0)
         w = W[lv]
         st.markdown("**Signal weights** — analyst priors divided by an unsupervised "
                     "reliability term. Never learned from labels.")
@@ -544,7 +583,7 @@ with tab_q:
                 if truth:
                     st.error("Ground truth: **%s**" % ", ".join(sorted(truth)))
                 else:
-                    st.success("Ground truth: benign (false positive)")
+                    st.caption("Ground truth: benign (false positive)")
 
     if st.session_state["verdicts"]:
         st.divider()
@@ -812,7 +851,7 @@ with tab_ev:
         e3.metric("Attack density, cold vs warm", "%.2fx" % atk_ratio)
 
         if cold_prec >= warm_prec:
-            st.success(
+            st.caption(
                 "Cold-start entities take %.1f%% of the alert budget while being %.1f%% "
                 "of traffic — but that over-representation is EARNED, not a shrinkage "
                 "failure: those alerts are **%.1f%% malicious**, higher than the %.1f%% "

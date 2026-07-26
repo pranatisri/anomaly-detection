@@ -14,5 +14,11 @@
   "per_day": 5,
   "theta_entity": 2.767305927999983,
   "alert_size_corr": 0.04142992661712228,
-  "generated_by": "src/export_demo.py"
+  "generated_by": "src/export_demo.py",
+  "burn_in_days": 7,
+  "levels": [
+    "entity",
+    "ip",
+    "long"
+  ]
 }
