@@ -1,0 +1,7 @@
+actual,brute_force,credential_stuffing,device_spoofing,impossible_travel,lateral_movement,low_and_slow,unclassified
+brute_force,8,0,0,0,0,0,0
+credential_stuffing,0,30,0,0,0,0,1
+device_spoofing,0,0,12,0,1,2,0
+impossible_travel,0,0,0,6,0,0,0
+insider_drift,0,1,0,0,1,0,0
+low_and_slow,0,0,0,0,13,15,0

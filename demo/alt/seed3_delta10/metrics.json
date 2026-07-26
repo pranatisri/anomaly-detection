@@ -1,0 +1,130 @@
+{
+  "event": {
+    "n_events": 131117.0,
+    "n_attack_events": 2022.0,
+    "prevalence": 0.015421341244842393,
+    "budget_fraction": 0.01,
+    "k": 1312.0,
+    "precision_at_budget": 0.5647865853658537,
+    "precision_at_budget_ceiling": 1.0,
+    "recall_at_budget": 0.3664688427299703,
+    "recall_at_budget_ceiling": 0.6484520276953512,
+    "n_insider_drift_events": 579.0,
+    "r_precision": 0.4698318496538081,
+    "pr_auc": 0.40804527571656973,
+    "pr_auc_baseline": 0.015421341244842393,
+    "pr_auc_lift": 26.459778642991825,
+    "insider_drift_share_of_budget": 0.0
+  },
+  "incident": {
+    "n_campaigns": 60.0,
+    "n_campaigns_detected": 40.0,
+    "incident_recall_at_k": 0.6666666666666666,
+    "incident_precision_at_k": 0.07936507936507936,
+    "incident_precision_ceiling": 0.11904761904761904,
+    "budget_K": 504.0,
+    "n_reviewed_alerts": 504.0,
+    "alerts_per_analyst_per_day": 9.000675273876574,
+    "redundant_alerts": 77.0,
+    "per_level": {
+      "entity": {
+        "k": 280.0,
+        "n_alerts": 280.0,
+        "n_attributed": 73.0
+      },
+      "ip": {
+        "k": 112.0,
+        "n_alerts": 112.0,
+        "n_attributed": 29.0
+      },
+      "long": {
+        "k": 112.0,
+        "n_alerts": 112.0,
+        "n_attributed": 15.0
+      }
+    },
+    "per_type": {
+      "brute_force": {
+        "n_campaigns": 10.0,
+        "n_detected": 4.0,
+        "recall": 0.4,
+        "median_ttd_hours": 0.0,
+        "frac_detected_early": 1.0
+      },
+      "credential_stuffing": {
+        "n_campaigns": 10.0,
+        "n_detected": 10.0,
+        "recall": 1.0,
+        "median_ttd_hours": 0.11188113786291666,
+        "frac_detected_early": 1.0
+      },
+      "device_spoofing": {
+        "n_campaigns": 10.0,
+        "n_detected": 8.0,
+        "recall": 0.8,
+        "median_ttd_hours": 1.0640725589854165,
+        "frac_detected_early": 1.0
+      },
+      "impossible_travel": {
+        "n_campaigns": 10.0,
+        "n_detected": 3.0,
+        "recall": 0.3,
+        "median_ttd_hours": 8.944680006693888,
+        "frac_detected_early": 0.0
+      },
+      "lateral_movement": {
+        "n_campaigns": 10.0,
+        "n_detected": 10.0,
+        "recall": 1.0,
+        "median_ttd_hours": 0.0,
+        "frac_detected_early": 1.0
+      },
+      "low_and_slow": {
+        "n_campaigns": 10.0,
+        "n_detected": 5.0,
+        "recall": 0.5,
+        "median_ttd_hours": 72.29130183307556,
+        "frac_detected_early": 0.6
+      }
+    },
+    "median_ttd_hours": 0.0,
+    "frac_detected_early": 0.875
+  },
+  "bands": {
+    "theta": 0.0,
+    "bands": {
+      "insider_drift": {
+        "LOW": 0.12435233160621761,
+        "MEDIUM": 0.8411053540587219,
+        "HIGH": 0.03454231433506045
+      },
+      "low_and_slow": {
+        "LOW": 0.012903225806451613,
+        "MEDIUM": 0.7870967741935484,
+        "HIGH": 0.2
+      },
+      "normal": {
+        "LOW": 0.6065859503875004,
+        "MEDIUM": 0.35832892402502414,
+        "HIGH": 0.03508512558747549
+      }
+    },
+    "targets_met": {
+      "insider_drift_high_le_0.15": true,
+      "insider_drift_low_le_0.25": true,
+      "low_and_slow_high_ge_0.70": false
+    }
+  },
+  "coldstart": {
+    "n_cold": 4375,
+    "n_total": 131117,
+    "share_traffic": 0.03336714537397897,
+    "share_budget": 0.03737604881769641,
+    "attack_rate_cold": 0.037714285714285714,
+    "attack_rate_warm": 0.01465181234318537,
+    "precision_cold": 0.8367346938775511,
+    "precision_warm": 0.554675118858954,
+    "attack_density_ratio": 2.5740355411954763
+  },
+  "confusion_accuracy": 0.6615384615384615
+}

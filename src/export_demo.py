@@ -69,6 +69,13 @@ def main() -> None:
     ap.add_argument("--fit", default="seed1_delta05")
     ap.add_argument("--eval", dest="eval_tag", default="seed3_delta05")
     ap.add_argument("--out", default=OUT)
+    # entity_history is ~4 MB of the 5 MB bundle. The default export carries it; the
+    # alternative exports (delta sweep, holdout seeds) do not, or the repo grows by 45 MB
+    # of binary that is rewritten on every regeneration.
+    ap.add_argument("--no-history", action="store_true",
+                    help="skip entity_history.parquet (for alternative exports)")
+    ap.add_argument("--label", default=None,
+                    help="human-readable name for this export, shown in the app")
     args = ap.parse_args()
     out = os.path.abspath(args.out)
     os.makedirs(out, exist_ok=True)
@@ -218,12 +225,14 @@ def main() -> None:
     vol["day"] = vol["day"].astype(str)
 
     # ---- entity history, only for entities on screen ---------------------------------
-    ents = sorted({d["scope_key"] for d in detail})
-    hist_cols = ["event_id", "entity_id", "entity_type", "timestamp", "resource_accessed",
-                 "source_ip", "geo_country", "auth_method", "auth_result",
-                 "session_duration", "device_os"]
-    hist = ee[ee["entity_id"].isin(ents)][hist_cols].copy()
-    hist = hist.merge(scored[lvl][["event_id", "score"]], on="event_id", how="left")
+    hist = None
+    if not args.no_history:
+        ents = sorted({d["scope_key"] for d in detail})
+        hist_cols = ["event_id", "entity_id", "entity_type", "timestamp",
+                     "resource_accessed", "source_ip", "geo_country", "auth_method",
+                     "auth_result", "session_duration", "device_os"]
+        hist = ee[ee["entity_id"].isin(ents)][hist_cols].copy()
+        hist = hist.merge(scored[lvl][["event_id", "score"]], on="event_id", how="left")
 
     # ---- weights ----------------------------------------------------------------------
     weights = {lv: {"signals": det.fusions[lv].signals,
@@ -246,6 +255,9 @@ def main() -> None:
         # dropped: in precomputed mode these cannot be varied without re-exporting.
         "burn_in_days": 7,
         "levels": list(LEVELS),
+        "label": args.label or args.eval_tag,
+        "has_history": not args.no_history,
+        "prevalence": float(event_m["prevalence"]),
     }
 
     json.dump(_clean(meta), open(os.path.join(out, "meta.json"), "w"), indent=2)
@@ -260,7 +272,8 @@ def main() -> None:
     vol.to_csv(os.path.join(out, "volume.csv"), index=False)
     if len(cm):
         cm.to_csv(os.path.join(out, "confusion.csv"))
-    hist.to_parquet(os.path.join(out, "entity_history.parquet"), index=False)
+    if hist is not None:
+        hist.to_parquet(os.path.join(out, "entity_history.parquet"), index=False)
 
     total = sum(os.path.getsize(os.path.join(out, f)) for f in os.listdir(out))
     print()

@@ -1,0 +1,27 @@
+{
+  "fit_tag": "seed1_delta025",
+  "eval_tag": "seed3_delta025",
+  "fit_events": 172535,
+  "eval_events": 132119,
+  "entities": 175,
+  "n_days": 56,
+  "n_campaigns": 60,
+  "budgets": {
+    "entity": 5,
+    "ip": 2,
+    "long": 2
+  },
+  "per_day": 5,
+  "theta_entity": 2.7563574916814186,
+  "alert_size_corr": 0.03717022565631841,
+  "generated_by": "src/export_demo.py",
+  "burn_in_days": 7,
+  "levels": [
+    "entity",
+    "ip",
+    "long"
+  ],
+  "label": "delta 0.25",
+  "has_history": false,
+  "prevalence": 0.020875120156828315
+}

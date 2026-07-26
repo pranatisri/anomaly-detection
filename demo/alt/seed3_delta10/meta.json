@@ -1,0 +1,27 @@
+{
+  "fit_tag": "seed1_delta10",
+  "eval_tag": "seed3_delta10",
+  "fit_events": 172181,
+  "eval_events": 131117,
+  "entities": 175,
+  "n_days": 56,
+  "n_campaigns": 60,
+  "budgets": {
+    "entity": 5,
+    "ip": 2,
+    "long": 2
+  },
+  "per_day": 5,
+  "theta_entity": 2.7469152550035147,
+  "alert_size_corr": 0.03508328855692126,
+  "generated_by": "src/export_demo.py",
+  "burn_in_days": 7,
+  "levels": [
+    "entity",
+    "ip",
+    "long"
+  ],
+  "label": "delta 1.00 - attacks overlap benign",
+  "has_history": false,
+  "prevalence": 0.015421341244842393
+}

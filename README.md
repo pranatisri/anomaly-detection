@@ -30,8 +30,13 @@ python src/pipeline.py --explain 3   # headline metrics + sample alerts
 streamlit run dashboard/app.py       # the analyst console
 ```
 
-The dashboard generates its own demo data if `data/` is empty, so a fresh clone works with
-nothing but `streamlit run`.
+A fresh clone works with nothing but `streamlit run`. The dashboard prefers the precomputed
+bundles in `demo/` — real full-scale results, ten selectable fit/eval pairs (the δ sweep and
+the five holdout seeds), loaded instantly and using almost no memory. That is also what the
+deployed app serves, because a cloud container cannot hold the 173 MB of datasets and
+re-scoring a container-sized pair would be a different, easier experiment rather than a
+smaller one. With `data/` populated it re-scores live instead, which is the fully
+interactive path.
 
 ## What each module does
 
@@ -50,6 +55,8 @@ nothing but `streamlit run`.
 | `src/drift.py` | Drift adaptation and baseline-poisoning experiment. |
 | `src/stream.py` | `score_event()` + latency benchmark. |
 | `src/experiments.py` | Difficulty sweep + frozen-config holdout protocol. |
+| `src/export_demo.py` | Score one fit/eval pair at full scale, write a `demo/` bundle. |
+| `src/export_all.py` | Every bundle the dashboard offers, and why only those pairs. |
 | `dashboard/app.py` | Analyst console (6 tabs). |
 
 ## Two things to know before reading the numbers

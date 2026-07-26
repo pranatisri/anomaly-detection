@@ -1,0 +1,27 @@
+{
+  "fit_tag": "seed1_delta05",
+  "eval_tag": "seed103_delta05",
+  "fit_events": 172420,
+  "eval_events": 139530,
+  "entities": 188,
+  "n_days": 56,
+  "n_campaigns": 25,
+  "budgets": {
+    "entity": 6,
+    "ip": 2,
+    "long": 2
+  },
+  "per_day": 6,
+  "theta_entity": 2.767305927999983,
+  "alert_size_corr": 0.12654438165284965,
+  "generated_by": "src/export_demo.py",
+  "burn_in_days": 7,
+  "levels": [
+    "entity",
+    "ip",
+    "long"
+  ],
+  "label": "holdout seed 103",
+  "has_history": false,
+  "prevalence": 0.007231419766358489
+}

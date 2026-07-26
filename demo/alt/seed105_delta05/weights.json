@@ -1,0 +1,71 @@
+{
+  "entity": {
+    "signals": [
+      "geo_velocity",
+      "fail_rate_entity",
+      "fingerprint_mismatch",
+      "burst_ratio",
+      "hour_surprisal",
+      "ip_novelty",
+      "country_novelty",
+      "resource_surprisal",
+      "duration_z",
+      "ncmd_z",
+      "peer_incongruence",
+      "auth_method_novelty",
+      "cmd_surprisal"
+    ],
+    "weights": [
+      0.5027230833682447,
+      0.5622071837584591,
+      0.7547169811320755,
+      0.47957371225577267,
+      0.3016338500209468,
+      0.2514668901927913,
+      0.7,
+      0.4021784666945957,
+      0.20108923334729786,
+      0.20108923334729786,
+      0.4021784666945957,
+      0.5,
+      0.3519061583577712
+    ],
+    "mitigators": [],
+    "sigma_scale": 1.6758749130498152,
+    "theta": 2.767305927999983
+  },
+  "ip": {
+    "signals": [
+      "fail_rate_ip",
+      "ip_entity_fanout",
+      "ip_fail_ratio"
+    ],
+    "weights": [
+      0.9,
+      0.5104210974053595,
+      0.9
+    ],
+    "mitigators": [],
+    "sigma_scale": 1.371324066979243,
+    "theta": 2.0331079328954242
+  },
+  "long": {
+    "signals": [
+      "new_resource_rate_7d",
+      "offhours_rate_7d",
+      "breadth_ratio_7d",
+      "uncorroborated_new_edges_7d"
+    ],
+    "weights": [
+      0.443213296398892,
+      0.32272523532048414,
+      0.7,
+      0.484304932735426
+    ],
+    "mitigators": [
+      "corroboration_7d"
+    ],
+    "sigma_scale": 1.5210103006721567,
+    "theta": 1.9953291904124002
+  }
+}
