@@ -275,7 +275,12 @@ def render_orientation():
     rather than as deliberate choices, so they are answered here rather than left to the
     report. Collapsed, because someone who already knows should not have to scroll past it.
     """
-    with st.expander("❓ New here? What this page is, and how to read it", expanded=False):
+    # The label says what is INSIDE, not who it is for. "New here?" asks the reader to
+    # self-identify as a beginner before clicking, which is the wrong prompt for a reviewer
+    # skimming the page: they skip it, and then misread the metrics it exists to explain.
+    with st.expander(
+            "📖 Start here — what this shows, what each control does, "
+            "and how to read the numbers", expanded=False):
         st.markdown("""
 **What this is.** A security analyst's console. The system reads access logs — who signed
 in, from where, on what device, touching which resource — and learns what *normal* looks
