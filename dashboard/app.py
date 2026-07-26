@@ -40,6 +40,38 @@ st.set_page_config(page_title="Behavioural Anomaly Detection — SOC console", l
 BURN_IN_DAYS = 7
 BAND_ICON = {"HIGH": "🔴", "MEDIUM": "🟠", "LOW": "⚪"}
 
+DEMO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "demo")
+
+
+@st.cache_data(show_spinner=False)
+def load_bundle():
+    """Precomputed results from the FULL-SIZE evaluation, exported by src/export_demo.py.
+
+    A cloud container cannot hold the real datasets, and regenerating a smaller pair to
+    score live produces a different experiment, not a smaller one: at 100 entities x 40
+    days there are ~3 campaigns per attack type, which reported PR-AUC 0.801 against the
+    evaluated 0.643 and 1.000 recall on every type. Shipping those numbers next to a
+    report whose central claim is "a score near 0.99 is a bug report" would discredit
+    both. So the deployed app displays the real evaluated results instead.
+    """
+    import json
+    d = os.path.abspath(DEMO)
+    need = ["meta.json", "metrics.json", "alerts.json", "weights.json"]
+    if not all(os.path.exists(os.path.join(d, f)) for f in need):
+        return None
+    b = {}
+    for f in need:
+        b[f[:-5]] = json.load(open(os.path.join(d, f), encoding="utf-8"))
+    for f, key in (("fp_breakdown.csv", "fp"), ("volume.csv", "volume"),
+                   ("confusion.csv", "confusion")):
+        fp_ = os.path.join(d, f)
+        if os.path.exists(fp_):
+            b[key] = pd.read_csv(fp_, index_col=0 if key == "confusion" else None)
+    hp = os.path.join(d, "entity_history.parquet")
+    if os.path.exists(hp):
+        b["history"] = pd.read_parquet(hp)
+    return b
+
 
 def _tags():
     d = os.path.abspath(DATA)
@@ -91,9 +123,265 @@ def metrics(eval_tag: str, level: str, per_day: int, _combined, _scored, _labels
     return event_m, inc_m, fp, bands
 
 
+
+def render_precomputed(B):
+    """Render the real evaluated results. No fitting, no scoring, ~no memory."""
+    meta, M = B["meta"], B["metrics"]
+    ev_m, inc_m = M["event"], M["incident"]
+
+    st.success(
+        "**Showing the real evaluated results** — fit on `%s` (%s events), scored on "
+        "`%s` (%s events, %d entities, %d days, **%d attack campaigns**). These are the "
+        "same numbers as `REPORT.md`, computed at full scale and exported by "
+        "`src/export_demo.py`; the app displays them rather than re-scoring, because a "
+        "cloud container cannot hold the datasets."
+        % (meta["fit_tag"], f'{meta["fit_events"]:,}', meta["eval_tag"],
+           f'{meta["eval_events"]:,}', meta["entities"], meta["n_days"],
+           meta["n_campaigns"]))
+
+    k1, k2, k3, k4, k5 = st.columns(5)
+    k1.metric("Events scored", f'{meta["eval_events"]:,}')
+    k2.metric("Entities", "%d" % meta["entities"])
+    k3.metric("Campaigns", "%d" % meta["n_campaigns"])
+    k4.metric("Window", "%d days" % meta["n_days"])
+    k5.metric("Budget", "%d/day" % meta["per_day"])
+
+    t_q, t_p, t_r, t_e, t_v, t_m = st.tabs(
+        ["Alert queue", "Performance", "Robustness", "Entity history", "Alert volume",
+         "Detector internals"])
+
+    alerts = B["alerts"]
+    reveal = st.sidebar.checkbox("Evaluation mode (reveal ground truth)", value=False,
+                                 help="Available only because this data is synthetic.")
+    show_n = st.sidebar.slider("Alerts to show", 5, min(100, len(alerts)),
+                               min(25, len(alerts)))
+
+    # ---- queue ----
+    with t_q:
+        st.caption("Ranked by size-calibrated risk. Every contributing factor is a named, "
+                   "unit-ed signal — not a post-hoc attribution over an opaque score.")
+        for a in alerts[:show_n]:
+            icon = BAND_ICON.get(a["band"], "⚪")
+            head = "%s **%s** · `%s` · %s · score %.2f · %d events · %s%s" % (
+                icon, a["band"], a["scope_key"],
+                a["pred_type"].replace("_", " "), a["score"], a["n_events"],
+                str(a["start_ts"])[:16],
+                ("  ⚠️ COLD START (%d events of history)" % a.get("n_history", 0))
+                if a.get("cold_start") else "")
+            with st.expander(head):
+                st.markdown("**%s**" % a["summary"])
+                cA, cB = st.columns([3, 1])
+                cB.metric("Predicted type", a["pred_type"].replace("_", " "),
+                          "%.0f%% of evidence" % (100 * a.get("pred_confidence", 0)))
+                with cA:
+                    st.markdown("**Contributing signals** (including near-misses)")
+                    for w in a.get("why", []):
+                        st.markdown("%s %s  &nbsp;&nbsp;`z=%.1f`"
+                                    % ("🔹" if w["z"] >= 2.0 else "▫️", w["text"], w["z"]))
+                    st.caption("The value in each line is that signal's own unit; `z` is "
+                               "its clipped contribution to the fused score. Different "
+                               "quantities — they are not expected to match.")
+                if reveal:
+                    if a.get("truth"):
+                        st.error("Ground truth: **%s**" % ", ".join(a["truth"]))
+                    elif a.get("confounder"):
+                        st.warning("Ground truth: benign — engineered confounder "
+                                   "`%s`" % a["confounder"])
+                    else:
+                        st.success("Ground truth: benign (ordinary)")
+
+    # ---- performance ----
+    with t_p:
+        st.subheader("Primary — incident level")
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Incident recall@K", "%.3f" % inc_m["incident_recall_at_k"],
+                  "%d/%d campaigns" % (inc_m["n_campaigns_detected"], inc_m["n_campaigns"]))
+        m2.metric("Incident precision@K", "%.3f" % inc_m["incident_precision_at_k"],
+                  "ceiling %.3f — budget-bound" % inc_m["incident_precision_ceiling"])
+        m3.metric("Alerts/analyst/day", "%.1f" % inc_m["alerts_per_analyst_per_day"])
+        m4.metric("Median time-to-detect", "%.1f h" % (inc_m.get("median_ttd_hours") or 0))
+
+        st.subheader("Event level — top 1% budget")
+        e1, e2, e3, e4 = st.columns(4)
+        e1.metric("Precision@1%", "%.3f" % ev_m["precision_at_budget"],
+                  "ceiling %.3f" % ev_m["precision_at_budget_ceiling"])
+        e2.metric("Recall@1%", "%.3f" % ev_m["recall_at_budget"],
+                  "ceiling %.3f" % ev_m["recall_at_budget_ceiling"])
+        e3.metric("R-Precision", "%.3f" % ev_m["r_precision"], "no ceiling artefact")
+        e4.metric("PR-AUC", "%.3f" % ev_m["pr_auc"],
+                  "%.0fx random (%.4f)" % (ev_m["pr_auc_lift"], ev_m["pr_auc_baseline"]))
+
+        st.subheader("Per-attack-type campaign recall")
+        pt = pd.DataFrame([{"type": k, "recall": v["recall"],
+                            "detected": int(v["n_detected"]), "of": int(v["n_campaigns"])}
+                           for k, v in sorted(inc_m["per_type"].items())])
+        c1, c2 = st.columns(2)
+        c1.bar_chart(pt.set_index("type")["recall"], height=260)
+        c2.dataframe(pt, width="stretch", height=260)
+
+        if "confusion" in B:
+            st.subheader("Anomaly-type confusion matrix")
+            st.caption("Predicted vs actual over detected alerts. Exact-match accuracy "
+                       "**%.3f**. Attribution is rule-based over named evidence, not "
+                       "learned: a classifier trained on our own generator's labels would "
+                       "recover the injection wiring." % M["confusion_accuracy"])
+            st.dataframe(B["confusion"], width="stretch")
+
+        if "fp" in B:
+            st.subheader("False positives by engineered benign behaviour")
+            st.caption("Confounders are injected at 4x the attack rate specifically to "
+                       "trip each detector layer. This table is the evidence that "
+                       "'unusual' and 'malicious' are not synonyms here.")
+            st.dataframe(B["fp"].head(12), width="stretch")
+
+        st.subheader("Ambiguous edge case — insider_drift")
+        bd = pd.DataFrame(M["bands"]["bands"]).T
+        st.dataframe(bd.style.format("{:.2f}"), width="stretch")
+
+    # ---- robustness ----
+    with t_r:
+        FIG = os.path.join(os.path.abspath(SRC), "..", "figures")
+        cs = M["coldstart"]
+        st.subheader("Cold start — measured, not merely implemented")
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Cold-start events", f'{cs["n_cold"]:,}',
+                  "%.1f%% of stream" % (100 * cs["share_traffic"]))
+        c2.metric("Share of top-1% budget", "%.1f%%" % (100 * cs["share_budget"]))
+        c3.metric("Precision, cold alerts", "%.1f%%" % (100 * cs["precision_cold"]))
+        c4.metric("Precision, warm alerts", "%.1f%%" % (100 * cs["precision_warm"]))
+        if cs["precision_cold"] >= cs["precision_warm"]:
+            st.success(
+                "Cold-start entities take %.1f%% of the budget while being %.1f%% of "
+                "traffic — over-representation that is **earned**: those alerts are "
+                "%.1f%% malicious versus %.1f%% for warm alerts, and cold-start events "
+                "carry %.2fx the attack rate. Removing them would LOWER Precision@1%%."
+                % (100 * cs["share_budget"], 100 * cs["share_traffic"],
+                   100 * cs["precision_cold"], 100 * cs["precision_warm"],
+                   cs["attack_density_ratio"]))
+        st.caption("Shrinkage is n/(n+50) toward the peer-group prior, with novelty flags "
+                   "scaled by the same weight so 'never seen before' fires weakly for an "
+                   "entity with no history.")
+
+        st.subheader("Concept drift and baseline poisoning")
+        dp = os.path.join(FIG, "drift_poisoning.png")
+        if os.path.exists(dp):
+            st.image(dp, width="stretch")
+            d1, d2, d3 = st.columns(3)
+            d1.metric("Frozen baseline", "23.7", "false alerts on ONE legit entity")
+            d2.metric("Adaptive updating", "0.5", "same entity, 47x fewer")
+            d3.metric("Poisoning resistance", "not shown", "0.765 vs 0.751, p=0.05")
+            st.caption("The adaptation/rigidity trade-off is demonstrated and large. The "
+                       "poisoning claim is NOT met and is reported as a negative result.")
+
+        st.subheader("Difficulty sweep")
+        ds = os.path.join(FIG, "delta_sweep.png")
+        if os.path.exists(ds):
+            st.image(ds, width="stretch")
+        sc = os.path.join(FIG, "delta_sweep.csv")
+        if os.path.exists(sc):
+            sw = pd.read_csv(sc)
+            st.dataframe(sw[["delta", "prevalence", "precision_at_1pct", "pr_auc",
+                             "r_precision", "incident_recall"]].style.format("{:.3f}"),
+                         width="stretch")
+            st.caption("Precision@1% and PR-AUC are the headline signals because both are "
+                       "monotone. Incident recall is confounded by prevalence falling "
+                       "across the sweep.")
+
+        ho = os.path.join(FIG, "holdout.csv")
+        if os.path.exists(ho):
+            st.subheader("Held-out seeds — run once under a frozen config")
+            hd = pd.read_csv(ho)
+            st.dataframe(hd[["eval", "prevalence", "incident_recall", "precision_at_1pct",
+                             "r_precision", "pr_auc"]].style.format(
+                {c: "{:.3f}" for c in ["prevalence", "incident_recall",
+                                       "precision_at_1pct", "r_precision", "pr_auc"]}),
+                width="stretch")
+            g1, g2, g3 = st.columns(3)
+            g1.metric("Incident recall", "%.3f" % hd["incident_recall"].mean(), "holdout mean")
+            g2.metric("PR-AUC", "%.3f" % hd["pr_auc"].mean(), "holdout mean")
+            g3.metric("R-Precision", "%.3f" % hd["r_precision"].mean(), "holdout mean")
+
+        ab = os.path.join(FIG, "ablation_multiseed.csv")
+        if os.path.exists(ab):
+            st.subheader("Layer ablation — does each layer earn its keep?")
+            am = pd.read_csv(ab)
+            piv = am.pivot_table(index="config", columns="eval",
+                                 values="d_precision_at_1pct")
+            piv["mean"] = piv.mean(axis=1)
+            st.dataframe(piv.style.format("{:+.3f}"), width="stretch")
+            st.caption("Δ Precision@1% vs the full model across four eval seeds. L0 and L3 "
+                       "are load-bearing; L1 and L2 straddle zero — L2's contribution is "
+                       "not distinguishable from zero on this benchmark.")
+
+    # ---- entity history ----
+    with t_e:
+        if "history" in B:
+            h = B["history"]
+            ents = sorted(h["entity_id"].unique())
+            who = st.selectbox("Entity", ents)
+            eh = h[h["entity_id"] == who].sort_values("timestamp")
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Events", "%d" % len(eh))
+            c2.metric("Distinct resources", "%d" % eh["resource_accessed"].nunique())
+            c3.metric("Distinct source IPs", "%d" % eh["source_ip"].nunique())
+            c4.metric("Type", str(eh["entity_type"].iloc[0]))
+            if "score" in eh:
+                st.line_chart(eh.set_index("timestamp")["score"], height=240)
+            st.dataframe(eh.drop(columns=["event_id"]).tail(40), width="stretch", height=320)
+            st.caption("History is shipped only for the entities appearing in the alert "
+                       "queue — the full event stream is 132k rows.")
+
+    # ---- volume ----
+    with t_v:
+        if "volume" in B:
+            v = B["volume"].set_index("day")
+            st.caption("Volume under the rate-based operating point is stable by "
+                       "construction. The comparison is why that operating point was "
+                       "adopted over a fixed per-event threshold.")
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown("**After — rate-based top-N per day**")
+                st.bar_chart(v[["rate_based"]], height=240)
+                st.caption("median %.0f · max %.0f" % (v["rate_based"].median(),
+                                                       v["rate_based"].max()))
+            with c2:
+                st.markdown("**Before — fixed per-event threshold**")
+                st.bar_chart(v[["fixed_threshold"]], height=240)
+                st.caption("median %.0f · max %.0f — swings with how busy the estate is, "
+                           "because the threshold was calibrated per EVENT while alerts "
+                           "are per entity-window."
+                           % (v["fixed_threshold"].median(), v["fixed_threshold"].max()))
+
+    # ---- internals ----
+    with t_m:
+        W = B["weights"]
+        lv = st.selectbox("Level", list(W.keys()))
+        w = W[lv]
+        st.markdown("**Signal weights** — analyst priors divided by an unsupervised "
+                    "reliability term. Never learned from labels.")
+        st.table(pd.DataFrame({"signal": w["signals"],
+                               "weight": [round(x, 3) for x in w["weights"]]})
+                 .sort_values("weight", ascending=False).reset_index(drop=True))
+        if w["mitigators"]:
+            st.markdown("**Mitigating signals** (subtracted, not added): `%s`"
+                        % ", ".join(w["mitigators"]))
+        st.markdown("**Correlation correction** — Stouffer denominator √(wᵀΣw) = `%.3f`"
+                    % w["sigma_scale"])
+        st.markdown("**Alert-size confound removed** — corr(alert score, alert size) = "
+                    "`%.3f`" % meta["alert_size_corr"])
+        st.caption("Uncorrected this was 0.263, and service accounts took 19 of the top "
+                   "30 alerts while being 30% of traffic.")
+
+
 # --------------------------------------------------------------------------------------
 
 st.title("Behavioural Anomaly Detection — analyst console")
+
+BUNDLE = load_bundle()
+
+if BUNDLE is not None:
+    render_precomputed(BUNDLE)
+    st.stop()
 
 tags = _tags()
 if not tags:

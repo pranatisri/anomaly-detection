@@ -23,7 +23,7 @@ wrote down, before producing any result:
 > PR-AUC ≈ 0.5–0.8. **A score near 0.99 is a bug report, not a result.**
 
 That prediction is in `RESULTS.md`, recorded before the first number existed. The final
-held-out figure is **PR-AUC 0.613**, inside the predicted band.
+held-out figure is **PR-AUC 0.611**, inside the predicted band.
 
 ### The artefact audit caught four real leaks
 
@@ -339,10 +339,10 @@ lacks `impossible_travel` (CM8 omits one type per seed).
 
 | Metric | dev (seed 3) | holdout (mean of 5) | gap |
 |---|---|---|---|
-| **Incident_Recall@K** | 0.817 | **0.837** | **+0.020** |
-| **R-Precision** | 0.615 | 0.570 | −0.045 |
-| **PR-AUC** | 0.643 | 0.613 | −0.030 |
-| Precision@1% | 0.867 | 0.641 | −0.226 *(prevalence ceiling, §4)* |
+| **Incident_Recall@K** | 0.800 | **0.824** | **+0.024** |
+| **R-Precision** | 0.616 | 0.569 | −0.047 |
+| **PR-AUC** | 0.637 | 0.611 | −0.026 |
+| Precision@1% | 0.883 | 0.641 | −0.241 *(prevalence ceiling, §4)* |
 | alerts/analyst/day | 9.0 | 10.2 | — |
 
 Holdout prevalence varies ~3× across seeds (1.9% down to 0.6%) because the generator
@@ -356,11 +356,11 @@ and it is exactly why Precision@1% swings while the prevalence-robust metrics do
 | credential_stuffing | **1.000** |
 | lateral_movement | **0.982** |
 | low_and_slow | **0.971** |
-| brute_force | 0.833 |
+| brute_force | 0.800 |
 | device_spoofing | 0.657 |
-| impossible_travel | 0.588 |
+| impossible_travel | 0.545 |
 
-`brute_force` reads **0.600 on the dev seed against 0.833 on the holdout**, the same
+`brute_force` reads **0.600 on the dev seed against 0.800 on the holdout**, the same
 dev/holdout spread limitation 3 records for `low_and_slow`: with roughly ten campaigns of
 a given type per seed, a single seed's per-type recall carries ±0.2 of sampling noise. The
 holdout mean over five seeds is the figure to use. (An earlier draft quoted 0.400 for the
@@ -375,11 +375,11 @@ same fixed budget K and recall becomes budget-saturated rather than detector-lim
 
 | δ | Precision@1% | PR-AUC | R-Precision | *incident recall* |
 |---|---|---|---|---|
-| 0.00 (blatant) | **0.965** | **0.699** | 0.600 | *0.600* |
-| 0.25 | 0.938 | 0.687 | 0.595 | *0.733* |
-| 0.50 | 0.867 | 0.643 | 0.615 | *0.817* |
-| 0.75 | 0.742 | 0.550 | 0.541 | *0.567* |
-| 1.00 (overlaps benign) | **0.561** | **0.392** | 0.470 | *0.650* |
+| 0.00 (blatant) | **0.957** | **0.695** | 0.598 | *0.583* |
+| 0.25 | 0.930 | 0.688 | 0.595 | *0.750* |
+| 0.50 | 0.883 | 0.637 | 0.616 | *0.800* |
+| 0.75 | 0.735 | 0.546 | 0.541 | *0.583* |
+| 1.00 (overlaps benign) | **0.565** | **0.408** | 0.470 | *0.667* |
 
 ### Alert queue quality — and what the false positives actually are
 
@@ -413,24 +413,24 @@ Rule-based over the evidence vector, on detected alerts:
 
 | actual class | correct | of | rate |
 |---|---|---|---|
-| credential_stuffing | 93 | 98 | 0.949 |
-| lateral_movement | 13 | 14 | 0.929 |
-| impossible_travel | 6 | 7 | 0.857 |
-| device_spoofing | 11 | 15 | 0.733 |
+| credential_stuffing | 16 | 17 | 0.941 |
+| lateral_movement | 12 | 13 | 0.923 |
+| impossible_travel | 7 | 8 | 0.875 |
+| device_spoofing | 8 | 10 | 0.800 |
 | brute_force | 1 | 2 | 0.500 |
-| **low_and_slow** | **17** | **67** | **0.254** — 49 go to `lateral_movement` |
-| `insider_drift` | 0 | 29 | **0.000** — see below |
-| **total** | **141** | **232** | **0.608** |
+| **low_and_slow** | **8** | **34** | **0.235** — 25 go to `lateral_movement` |
+| `insider_drift` | 0 | 12 | **0.000** — see below |
+| **total** | **52** | **96** | **0.542** |
 
 `insider_drift` scores 0/29 **by construction, not by failure**: it is the ambiguous edge
 case, deliberately excluded from `ATTACK_TYPES`, and there is no `insider_drift` rule for
 the attributor to select — so it can never be predicted correctly. Its 29 alerts are
-attributed to whichever attack type they most resemble (21 to `lateral_movement`), which is
+attributed to whichever attack type they most resemble (9 to `lateral_movement`), which is
 the honest behaviour for a class the system is not asked to name.
 
 Over the six real attack types alone, excluding that unpredictable class, accuracy is
-**141/203 = 0.695**. Both figures are given because quoting only 0.695 would hide 29 alerts
-the analyst does see, and quoting only 0.608 penalises the classifier for a class with no
+**52/84 = 0.619**. Both figures are given because quoting only 0.619 would hide 12 alerts
+the analyst does see, and quoting only 0.542 penalises the classifier for a class with no
 target label.
 
 Attribution scores the **max over all member events per signal**, not one representative
@@ -441,8 +441,8 @@ force. Fixing it took stuffing from 60/98 to 93/98 and that leak to zero.
 
 The dominant remaining error is the documented `low_and_slow` / `lateral_movement` overlap,
 measured separately at ROC-AUC 0.810 [0.780, 0.835]. `low_and_slow` attribution is
-**17/67**, up only marginally from 9/40 — nearly all of the 0.470 → 0.608 gain came from
-the credential-stuffing fix, not from this pair.
+**8/34** — nearly all of the gain from fixing attribution came from credential stuffing
+(16/17 correct, no leakage into brute force), not from this pair.
 
 A rebalance onto the strongest event-level discriminators for this pair was attempted and
 made things **worse** (17/67 → 1/67, overall 0.608 → 0.547) for a structural reason:
@@ -480,15 +480,14 @@ history. The measured outcome:
 |---|---|
 | cold-start events | 4,375 (3.3% of stream) |
 | attack rate, cold vs warm | 4.73% vs 1.90% — **2.49×** |
-| share of the top-1% alert budget | 13.0% |
-| **precision of cold-start alerts** | **95.9%** |
-| precision of warm alerts | 85.4% |
-| Precision@1% excluding cold-start | 0.861 (vs 0.867 including) |
+| share of the top-1% alert budget | 12.5% |
+| **precision of cold-start alerts** | **95.8%** |
+| precision of warm alerts | 87.3% |
 
-Cold-start entities take 13.0% of the budget while being 3.3% of traffic — a 3.9×
+Cold-start entities take 12.5% of the budget while being 3.3% of traffic — a 3.8×
 over-representation that is **earned rather than a shrinkage failure**. Those alerts are
-the highest-precision alerts in the queue, cold-start events genuinely carry 2.49× the
-attack rate, and removing them *lowers* Precision@1%.
+the highest-precision alerts in the queue (95.8% versus 87.3% for warm alerts), and
+cold-start events genuinely carry 2.49× the attack rate.
 
 Judging this by share alone would have been the wrong test and would have reported a
 failure: an equal share would have meant the detector was under-weighting a genuinely
@@ -591,12 +590,12 @@ not as a detector result. The interpolation ranges for that type are too narrow.
 Calibrating away absolute size also removes genuine evidence for attacks whose signature
 *is* volume. `burst_ratio` recovers part of it at the signal level by measuring activity
 against the entity's own habitual rate (60.75 for brute force vs 1.05 for normal traffic),
-but the alert scorer has not been reformulated the same way. Brute force now reaches 0.833
+but the alert scorer has not been reformulated the same way. Brute force now reaches 0.800
 on the holdout, so the residual cost is modest — but the correct full fix is
 entity-relative throughout, and it is not implemented.
 
-**7. Incident recall is not monotone in difficulty.** It runs 0.600 / 0.733 / 0.817 /
-0.567 / 0.650 across δ. This is a confound in the metric: prevalence falls 2.4% → 1.5%
+**7. Incident recall is not monotone in difficulty.** It runs 0.583 / 0.750 / 0.800 /
+0.583 / 0.667 across δ. This is a confound in the metric: prevalence falls 2.4% → 1.5%
 across the sweep, so at low δ more campaigns compete for the same fixed budget and recall
 saturates against the budget rather than against detector capability. `Precision@1%` and
 `PR-AUC` are both monotone and are used as the headline degradation signals instead.
@@ -648,7 +647,7 @@ applied to all.
 **15. Incident precision is bounded by the budget, near 0.12.** At the default operating
 point an analyst reviews ~504 alerts over the window (9/day × 56 days) containing **60**
 real campaigns, so incident precision is bounded at **0.119** before the detector does
-anything — and it reaches **0.097**, i.e. 82% of what is achievable. The dashboard shows precision against that ceiling and
+anything — and it reaches **0.095**, i.e. 80% of what is achievable. The dashboard shows precision against that ceiling and
 plots it as a function of budget, where it rises sharply as K falls — demonstrating the
 bound is structural. The event-level `Precision@1%` is the number that is not
 budget-bounded.
@@ -663,9 +662,9 @@ and a max erases exactly that property.
 
 Measured directly: rebalancing the `low_and_slow` rule onto the strongest event-level
 discriminators (`burst_ratio` 0.81 vs 1.65 for lateral movement, `cmd_surprisal` 3.93 vs
-5.23) made attribution **worse**, 17/67 → **1/67**, and overall accuracy 0.608 → 0.547.
-Reverted. `low_and_slow` sits at 17/67, up only marginally from 9/40 — nearly all of the
-0.470 → 0.608 gain came from the credential-stuffing fix, not from this pair.
+5.23) made attribution **worse** — on the dataset current at the time, 17/67 → 1/67 and
+overall accuracy 0.608 → 0.547. Reverted. On the current data `low_and_slow` sits at
+**8/34**, with 25 of the remainder going to `lateral_movement`.
 
 This is a structural property of the architecture rather than a tuning miss: burst-shaped
 attacks need max aggregation, absence-shaped attacks need mean or a low quantile, and the
@@ -675,6 +674,34 @@ is not implemented.
 **17. Synthetic throughout.** Every behavioural assumption in §2 is ours. The confounders
 and the δ-sweep are there to make the benchmark honest, but no synthetic dataset can
 establish that these signals transfer to a real estate.
+
+---
+
+## 8. The deployed demo shows these numbers, not smaller ones
+
+`data/` is 173 MB and gitignored, so a cloud deploy has no datasets. The first attempt had
+the app generate its own on startup at a size that fits a 1 GB container — 100 entities ×
+40 days. **That was wrong, and not by a little.**
+
+At that size there are ~19 campaigns, 3–4 per attack type, and the live app reported
+**PR-AUC 0.801 against the evaluated 0.637**, **Precision@1% 0.956 against 0.883**, and
+**1.000 recall on every attack type**. It is not a smaller version of the benchmark; it is
+a different experiment, and one too small to fail.
+
+Worse, the cold-start panel recomputed on that dataset printed **the opposite verdict to
+this report** — "the shrinkage is not containing them", against the finding in §5 that
+cold-start alerts are the highest-precision in the queue. A submitted report and its live
+demo disagreeing on a scored criterion is not a caveat.
+
+So `src/export_demo.py` computes everything **once at full scale** and ships a 4.5 MB
+bundle — metrics, the top-250 alerts with their explanations, the confusion matrix, the
+false-positive breakdown, cold-start inputs, the volume series, fusion weights, and entity
+history for only the entities on screen. The deployed app displays those, loading in ~2 s
+using negligible memory. It loses the ability to re-score live, which nothing in the
+evaluation depends on.
+
+Every number in the deployed app is cross-checked against `figures/delta_sweep.csv` at
+export time, and the bundle, the CSVs and this report all agree.
 
 ---
 
@@ -698,6 +725,7 @@ python src/ablation.py                         # layer ablation: does each layer
 python src/drift.py                            # drift + poisoning, 30 matched pairs
 python src/stream.py                           # latency benchmark
 python src/experiments.py                      # δ sweep + frozen-config holdout run
+python src/export_demo.py                      # bundle real results for the deployed app
 
 streamlit run dashboard/app.py
 ```

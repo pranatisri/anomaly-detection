@@ -1178,3 +1178,59 @@ drafts recorded it failing at 37% HIGH. But `low_and_slow → HIGH` has fallen t
 against its ≥0.70 target. The failure moved sides rather than going away, and limitation 2
 now records the current one. Limitations 3 and 4 were also carrying stale figures
 (`device_spoofing` quoted at 0.692; actual 0.800 dev / 0.657 holdout) and were refreshed.
+
+---
+
+## Step 16 — the deployed demo was showing better numbers than the report
+
+Raised in review, and correct: the cloud app was generating its own 100 × 40 dataset to fit
+the container, and reporting **better** results than the evaluated ones.
+
+| | deployed demo (100×40) | evaluated (175 entities × 56 days) |
+|---|---|---|
+| PR-AUC | **0.801** | 0.637 |
+| Precision@1% | **0.956** | 0.883 |
+| per-type recall | **1.000 on all six** | 0.545 – 1.000 |
+
+At that size there are ~19 campaigns, 3–4 per attack type. It is not a smaller version of
+the benchmark; it is a different experiment, and one too small to fail. A judge opening the
+live demo would see six perfect recalls beside a report whose central claim is *"a score
+near 0.99 is a bug report, not a result"* — which reads as either the honesty narrative
+being theatre or the report being needlessly pessimistic. Neither is true.
+
+**Worse, the cold-start panel printed the opposite conclusion to the report.** Recomputed on
+the toy dataset it showed 92.6% cold vs 96.5% warm precision and density 1.02×, and
+displayed *"the shrinkage is not containing them"* — against the report's finding that
+cold-start alerts are the highest-precision in the queue. The submitted document and the
+live demo disagreeing on a scored criterion.
+
+### Fix: ship precomputed real results
+
+`src/export_demo.py` computes everything once at full scale and writes a **4.5 MB** bundle:
+metrics, top-250 alerts with explanations, confusion matrix, FP breakdown, cold-start
+inputs, volume series, fusion weights, and entity history for only the entities on screen.
+The dashboard prefers it and falls back to live generation only if absent.
+
+| | before | after |
+|---|---|---|
+| numbers shown | 19-campaign toy | **60 campaigns, 132k events, 175 entities** |
+| PR-AUC | 0.801 | **0.637** — matches the report exactly |
+| cold-start verdict | contradicts report | **95.8% cold vs 87.3% warm — agrees** |
+| first load | ~75 s, OOM risk | **1.7 s** |
+| memory | ~900 MB | negligible |
+
+Every exported figure is cross-checked against `figures/delta_sweep.csv`; bundle, CSVs and
+report now agree to three decimals.
+
+### And the CSVs were stale
+
+Chasing a 0.877-vs-0.867 discrepancy between the bundle and the sweep CSV showed the
+committed CSVs predated the current code: `delta_sweep.csv` written 08:58, `generator.py`
+modified 12:02, `seed1_delta05` regenerated 12:30. So everything was regenerated a fifth
+time and every number in `REPORT.md` refreshed against it.
+
+Movement was small but real — dev incident recall 0.817 → **0.800**, PR-AUC 0.643 →
+**0.637**, Precision@1% 0.867 → **0.883**, holdout incident recall 0.837 → **0.824**, type
+attribution 0.608 → **0.542** (on a smaller detected-alert set: 96 rather than 232).
+
+Audit gate PASS on both seeds, 13/13 metric tests, dashboard renders with no exceptions.

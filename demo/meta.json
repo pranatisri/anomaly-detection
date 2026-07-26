@@ -1,0 +1,18 @@
+{
+  "fit_tag": "seed1_delta05",
+  "eval_tag": "seed3_delta05",
+  "fit_events": 172420,
+  "eval_events": 131933,
+  "entities": 175,
+  "n_days": 56,
+  "n_campaigns": 60,
+  "budgets": {
+    "entity": 5,
+    "ip": 2,
+    "long": 2
+  },
+  "per_day": 5,
+  "theta_entity": 2.767305927999983,
+  "alert_size_corr": 0.04142992661712228,
+  "generated_by": "src/export_demo.py"
+}
