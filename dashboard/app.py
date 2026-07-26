@@ -93,7 +93,10 @@ def available_bundles():
     return out
 
 
-@st.cache_data(show_spinner=False)
+# max_entries=4: ten bundles are selectable and each expands to roughly 10-25 MB of Python
+# objects once the JSON is parsed and the parquet is a DataFrame. Caching all ten would add
+# ~200 MB, which matters only because live mode can now also run in the same container.
+@st.cache_data(show_spinner=False, max_entries=4)
 def load_bundle(d=None):
     """Precomputed results from the FULL-SIZE evaluation, exported by src/export_demo.py.
 
@@ -136,7 +139,12 @@ def _tags():
                    for f in os.listdir(d) if f.startswith("events_")})
 
 
-@st.cache_resource(show_spinner="Fitting detector on the training seed…")
+# max_entries=1: this holds the fitted detector plus the full scored frames, which is the
+# largest object in the process (~400 MB for a container-sized pair). 15 seeds give 225
+# fit/eval combinations, so an unbounded cache lets anyone clicking through seed pairs walk
+# the container into an OOM kill -- which takes the whole app down, precomputed mode
+# included. Refitting on a revisit costs a few minutes; running out of memory costs the demo.
+@st.cache_resource(show_spinner="Fitting detector on the training seed…", max_entries=1)
 def build(fit_tag: str, eval_tag: str):
     fit_events, fit_labels, _ = load(fit_tag, DATA)
     assert_feature_frame(fit_events, "dashboard(fit)")
@@ -485,21 +493,37 @@ st.title("Behavioural Anomaly Detection — analyst console")
 _AVAIL = available_bundles()
 _TAGS = _tags()
 
-# Which path runs. The precomputed bundles are the default everywhere, because they hold the
-# real full-scale numbers and load instantly. But `demo/` is committed, so without this
-# choice the bundle would win even on a machine that HAS the datasets, and the live scoring
-# path -- the one that actually demonstrates score_event, the ablations and a re-fit -- would
-# be unreachable locally. Only offered when datasets are present; on a cloud container
-# there is nothing to score, so no dead control is shown.
+# Which path runs. Precomputed is the default everywhere: it holds the real full-scale
+# numbers, loads instantly, and is what REPORT.md quotes. Live re-fits and re-scores, which
+# is the only way to watch the detector actually work -- vary the budget, change the seed
+# pair, see a queue produced rather than replayed.
+#
+# BOTH modes are offered on every deployment, including the cloud. Where no datasets exist
+# the live path generates a container-sized pair first. That pair is deliberately small and
+# its metrics are NOT comparable to the report -- 100 x 40 gives ~19 campaigns, roughly 3
+# per attack type, which measured PR-AUC 0.801 against the evaluated 0.643 and 1.000 recall
+# on every type. A benchmark that small cannot fail, so live mode carries a standing caveat
+# (see _scale_caveat below) and never claims to reproduce the reported numbers.
+# The option strings must NOT depend on _TAGS. On a cloud container the first render has no
+# datasets and the second (after live mode generates them) does, so a label that mentioned
+# the difference would change between runs; Streamlit resets a radio whose options changed,
+# which silently bounced the user back to Precomputed the moment generation finished.
+_MODE_LIVE = "Re-score live"
 _live = False
-if _AVAIL and _TAGS:
+if _AVAIL:
     _live = st.sidebar.radio(
-        "Mode", ["Precomputed results", "Re-score live from data/"], index=0,
+        "Mode", ["Precomputed results", _MODE_LIVE], index=0, key="mode",
         help="Precomputed shows the exported full-scale results — the numbers in "
              "REPORT.md, ten selectable fit/eval pairs, no computation. Live re-fits the "
-             "detector and re-scores a dataset from data/, which takes a few minutes and "
-             "lets you vary the budget and the seed pair freely."
-    ) == "Re-score live from data/"
+             "detector and re-scores, which lets you vary the budget and the seed pair "
+             "freely but takes a few minutes. Where no datasets are present live mode "
+             "generates a small pair first, whose metrics are illustrative only."
+    ) == _MODE_LIVE
+    if _live and not _TAGS:
+        st.sidebar.caption(
+            "No datasets here, so a small pair is generated first (~2 min, once). Its "
+            "numbers are illustrative — see the caveat on the page."
+        )
 
 if _AVAIL and not _live:
     # Dataset choice comes FIRST, because it changes every number below it. Only the
@@ -610,6 +634,37 @@ k2.metric("Entities", "%d" % n_entities)
 k3.metric("Alerts in queue", "%d" % len(queue), "%s level only" % level)
 k4.metric("Window", "%.0f days" % n_days)
 k5.metric("Budget", "%d/day" % per_day)
+
+# ---- scale caveat -------------------------------------------------------------------
+# Live mode on a cloud container scores a generated 100 x 40 pair, which yields ~19
+# campaigns -- about 3 per attack type. That is not a smaller version of the benchmark,
+# it is a different and much easier experiment: it measured PR-AUC 0.801 against the
+# evaluated 0.643, Precision@1% 0.956 against 0.883, and 1.000 recall on every attack
+# type. Six perfect recalls sitting beside a report whose central claim is "a score near
+# 0.99 is a bug report, not a result" discredits both, so the numbers below are labelled
+# for what they are wherever the dataset is too small to fail.
+# Count ATTACK campaigns only, exactly as the precomputed path and evaluate.py do:
+# insider_drift is excluded from the positive class (it is an FP-tuning cohort with its own
+# asymmetric objective). Counting raw rows here reported 79 against precomputed's 60 on the
+# same dataset, which reads as two modes disagreeing rather than one metric definition.
+_n_camp = (int(camps["campaign_type"].isin(ATTACK_TYPES).sum())
+           if camps is not None and "campaign_type" in getattr(camps, "columns", []) else 0)
+if n_entities < 150 or _n_camp < 40:
+    st.warning(
+        "**Illustrative scale — these numbers are not the reported results.** This is a "
+        "live re-score of %d entities over %.0f days with %d attack campaigns, roughly "
+        "%.0f per attack type. A benchmark that small cannot fail: it inflates every "
+        "metric and has previously returned 1.000 recall on all six types. It is here to "
+        "show the detector *working* — fitting, scoring, grouping, explaining — not to "
+        "measure it. For the evaluated numbers, which match `REPORT.md` exactly, switch "
+        "**Mode** back to *Precomputed results*."
+        % (n_entities, n_days, _n_camp, max(_n_camp, 1) / 6.0))
+else:
+    st.caption(
+        "Live re-score of `%s` fitted on `%s` — %s events, %d entities, %.0f days, %d "
+        "campaigns. Computed now, not replayed; the budget and seed pair above are live "
+        "controls." % (eval_tag, fit_tag, "{:,}".format(len(events)), n_entities,
+                       n_days, _n_camp))
 
 tab_q, tab_p, tab_ev, tab_e, tab_v, tab_m = st.tabs(
     ["Alert queue", "Performance", "Robustness", "Entity history", "Alert volume",
