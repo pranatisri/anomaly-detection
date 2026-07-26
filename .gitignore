@@ -1,0 +1,19 @@
+# Generated datasets. 173 MB and fully reproducible from a seed — never commit these.
+# `python src/generator.py --seed N ...` regenerates any of them byte-identically.
+data/*.parquet
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# Run logs (the CSV/PNG results in figures/ ARE committed — they are the record)
+figures/*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

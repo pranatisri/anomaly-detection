@@ -1,0 +1,70 @@
+{
+  "config": {
+    "signal_prior": {
+      "geo_velocity": 1.0,
+      "fail_rate_entity": 0.9,
+      "fingerprint_mismatch": 0.9,
+      "burst_ratio": 0.9,
+      "cmd_surprisal": 0.7,
+      "uncorroborated_new_edges_7d": 0.9,
+      "hour_surprisal": 0.6,
+      "ip_novelty": 0.5,
+      "country_novelty": 0.7,
+      "resource_surprisal": 0.8,
+      "duration_z": 0.4,
+      "ncmd_z": 0.4,
+      "peer_incongruence": 0.8,
+      "auth_method_novelty": 0.5,
+      "fail_rate_ip": 0.9,
+      "ip_entity_fanout": 1.0,
+      "ip_fail_ratio": 0.9,
+      "new_resource_rate_7d": 0.8,
+      "offhours_rate_7d": 0.6,
+      "breadth_ratio_7d": 0.7
+    },
+    "mitigating_signals": [
+      "corroboration_7d"
+    ],
+    "mitigation_weight": 0.75,
+    "z_clip": [
+      -4.0,
+      6.0
+    ],
+    "target_fpr": 0.01,
+    "ref_sample_cap": 120000,
+    "cold_start_n0": 50.0,
+    "cold_start_min_events": 25,
+    "fail_window_s": 900,
+    "ip_window_s": 3600,
+    "long_window_s": 604800,
+    "max_tracked_ips": 96,
+    "max_tracked_resources": 384,
+    "growth_spike_factor": 2.5,
+    "quarantine_min_uncorroborated": 2,
+    "signals": [
+      "geo_velocity",
+      "fail_rate_entity",
+      "fail_rate_ip",
+      "fingerprint_mismatch",
+      "burst_ratio",
+      "hour_surprisal",
+      "ip_novelty",
+      "country_novelty",
+      "resource_surprisal",
+      "duration_z",
+      "ncmd_z",
+      "peer_incongruence",
+      "auth_method_novelty",
+      "ip_entity_fanout",
+      "ip_fail_ratio",
+      "cmd_surprisal",
+      "new_resource_rate_7d",
+      "offhours_rate_7d",
+      "breadth_ratio_7d",
+      "uncorroborated_new_edges_7d",
+      "corroboration_7d"
+    ]
+  },
+  "sha256_16": "10284ea8d70452c5",
+  "frozen_at": "2026-07-26 08:54:43"
+}
